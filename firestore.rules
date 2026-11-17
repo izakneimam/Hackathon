@@ -1,0 +1,692 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL HELPERS ---
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isIfprEmail() {
+      return isSignedIn()
+        && request.auth.token.email is string
+        && request.auth.token.email.matches('^[^@\\s]+@(estudantes\\.)?ifpr\\.edu\\.br$');
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidEmailKey(emailKey) {
+      return emailKey is string
+        && emailKey.size() >= 5
+        && emailKey.size() <= 160
+        && emailKey.matches('^[^/\\s@]+@[^/\\s@]+\\.[^/\\s@]+$');
+    }
+
+    function hasRole(roleName) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/userRoles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/userRoles/$(request.auth.uid)).data.role == roleName;
+    }
+
+    function isOrg() {
+      return hasRole('organizacao');
+    }
+
+    function isJuror() {
+      return hasRole('jurado');
+    }
+
+    function isParticipant() {
+      return hasRole('participante');
+    }
+
+    function isVerifiedParticipant() {
+      return isEmailVerified() && isIfprEmail() && isParticipant();
+    }
+
+    function eventData() {
+      return get(/databases/$(database)/documents/settings/event).data;
+    }
+
+    function beforeDeadline() {
+      return exists(/databases/$(database)/documents/settings/event)
+        && request.time <= eventData().submissionDeadline;
+    }
+
+    function isEvaluationOpen() {
+      return exists(/databases/$(database)/documents/settings/event)
+        && eventData().evaluationOpen == true;
+    }
+
+    function areGradesReleased() {
+      return exists(/databases/$(database)/documents/settings/event)
+        && eventData().gradesReleased == true;
+    }
+
+    function isTeamLeader(teamId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/teams/$(teamId))
+        && get(/databases/$(database)/documents/teams/$(teamId)).data.leaderUid == request.auth.uid;
+    }
+
+    function isProjectDraft(teamId) {
+      return exists(/databases/$(database)/documents/projects/$(teamId))
+        && get(/databases/$(database)/documents/projects/$(teamId)).data.status == 'rascunho';
+    }
+
+    function isProjectSubmitted(projectId) {
+      return exists(/databases/$(database)/documents/projects/$(projectId))
+        && get(/databases/$(database)/documents/projects/$(projectId)).data.status == 'enviado';
+    }
+
+    function isProjectEvaluated(projectId) {
+      return exists(/databases/$(database)/documents/projects/$(projectId))
+        && get(/databases/$(database)/documents/projects/$(projectId)).data.status == 'avaliado';
+    }
+
+    // --- VALIDATION BLUEPRINTS ---
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'lgpdAccepted', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'name', 'email', 'pendingTeamName', 'teamId', 'lgpdAccepted', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 120
+        && data.email is string && data.email.size() >= 5 && data.email.size() <= 160
+        && data.lgpdAccepted is bool && data.lgpdAccepted == true
+        && (!('pendingTeamName' in data) || (data.pendingTeamName is string && data.pendingTeamName.size() <= 80))
+        && (!('teamId' in data) || (data.teamId is string && data.teamId.size() <= 128))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserRole(data) {
+      return data.keys().hasAll(['role', 'email', 'updatedAt'])
+        && data.keys().hasOnly(['role', 'email', 'updatedAt'])
+        && data.role in ['participante', 'jurado', 'organizacao']
+        && data.email is string && data.email.size() >= 5 && data.email.size() <= 160
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidEventSettings(data) {
+      return data.keys().hasAll([
+          'eventTitle', 'eventSubtitle', 'campusLabel', 'heroBadge', 'heroTag',
+          'heroTitleLine1', 'heroTitleHighlight', 'heroDescription',
+          'startsAt', 'submissionDeadline', 'maxTeams', 'teamMinMembers',
+          'teamMaxMembers', 'maxExternalMembers', 'evaluationOpen', 'gradesReleased',
+          'contactEmail', 'contactLocation', 'updatedAt'
+        ])
+        && data.eventTitle is string && data.eventTitle.size() <= 150
+        && data.eventSubtitle is string && data.eventSubtitle.size() <= 150
+        && data.campusLabel is string && data.campusLabel.size() <= 120
+        && data.heroBadge is string && data.heroBadge.size() <= 120
+        && data.heroTag is string && data.heroTag.size() <= 80
+        && data.heroTitleLine1 is string && data.heroTitleLine1.size() <= 80
+        && data.heroTitleHighlight is string && data.heroTitleHighlight.size() <= 80
+        && data.heroDescription is string && data.heroDescription.size() <= 500
+        && data.startsAt is timestamp
+        && data.submissionDeadline is timestamp
+        && data.maxTeams is int && data.maxTeams >= 1 && data.maxTeams <= 500
+        && data.teamMinMembers is int && data.teamMinMembers >= 1 && data.teamMinMembers <= 10
+        && data.teamMaxMembers is int && data.teamMaxMembers >= data.teamMinMembers && data.teamMaxMembers <= 10
+        && data.maxExternalMembers is int && data.maxExternalMembers >= 0 && data.maxExternalMembers <= 5
+        && data.evaluationOpen is bool
+        && data.gradesReleased is bool
+        && data.contactEmail is string && data.contactEmail.size() <= 160
+        && data.contactLocation is string && data.contactLocation.size() <= 160
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPublicStats(data) {
+      return data.keys().hasAll(['teamCount', 'updatedAt'])
+        && data.keys().hasOnly(['teamCount', 'updatedAt'])
+        && data.teamCount is int && data.teamCount >= 0 && data.teamCount <= 1000
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCriterion(data, key) {
+      return key in ['inovacao', 'tecnica', 'demo', 'impacto', 'pitch']
+        && data.keys().hasAll(['key', 'name', 'description', 'weight', 'color', 'order'])
+        && data.keys().hasOnly(['key', 'name', 'description', 'weight', 'color', 'order'])
+        && data.key == key
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 100
+        && data.description is string && data.description.size() >= 5 && data.description.size() <= 400
+        && data.weight is int && data.weight >= 1 && data.weight <= 100
+        && data.color is string && data.color.size() <= 30
+        && data.order is int && data.order >= 1 && data.order <= 5;
+    }
+
+    function isValidScheduleItem(data) {
+      return data.keys().hasAll(['timeLabel', 'title', 'description', 'accent', 'order'])
+        && data.keys().hasOnly(['timeLabel', 'title', 'description', 'accent', 'order'])
+        && data.timeLabel is string && data.timeLabel.size() >= 2 && data.timeLabel.size() <= 50
+        && data.title is string && data.title.size() >= 2 && data.title.size() <= 120
+        && data.description is string && data.description.size() >= 2 && data.description.size() <= 400
+        && data.accent is string && data.accent.size() <= 30
+        && data.order is int && data.order >= 0 && data.order <= 100;
+    }
+
+    function isValidRuleItem(data) {
+      return data.keys().hasAll(['title', 'content', 'order'])
+        && data.keys().hasOnly(['title', 'content', 'order'])
+        && data.title is string && data.title.size() >= 2 && data.title.size() <= 160
+        && data.content is string && data.content.size() >= 2 && data.content.size() <= 1500
+        && data.order is int && data.order >= 0 && data.order <= 100;
+    }
+
+    function isValidFaqItem(data) {
+      return data.keys().hasAll(['question', 'answer', 'order'])
+        && data.keys().hasOnly(['question', 'answer', 'order'])
+        && data.question is string && data.question.size() >= 2 && data.question.size() <= 200
+        && data.answer is string && data.answer.size() >= 2 && data.answer.size() <= 1500
+        && data.order is int && data.order >= 0 && data.order <= 100;
+    }
+
+    function isValidPublicJuror(data) {
+      return data.keys().hasAll(['name', 'initials', 'role', 'institution', 'colorTheme', 'order'])
+        && data.keys().hasOnly(['name', 'initials', 'role', 'institution', 'colorTheme', 'order'])
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 120
+        && data.initials is string && data.initials.size() >= 1 && data.initials.size() <= 4
+        && data.role is string && data.role.size() >= 2 && data.role.size() <= 120
+        && data.institution is string && data.institution.size() >= 2 && data.institution.size() <= 120
+        && data.colorTheme is string && data.colorTheme.size() <= 30
+        && data.order is int && data.order >= 0 && data.order <= 100;
+    }
+
+    function isValidTeam(data) {
+      return data.keys().hasAll(['name', 'number', 'leaderUid', 'leaderName', 'leaderEmail', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['name', 'number', 'leaderUid', 'leaderName', 'leaderEmail', 'createdAt', 'updatedAt'])
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 80
+        && data.number is int && data.number >= 1 && data.number <= 1000
+        && data.leaderUid is string && data.leaderUid.size() >= 1 && data.leaderUid.size() <= 128
+        && data.leaderName is string && data.leaderName.size() >= 2 && data.leaderName.size() <= 120
+        && data.leaderEmail is string && data.leaderEmail.size() >= 5 && data.leaderEmail.size() <= 160
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTeamMember(data) {
+      return data.keys().hasAll(['name', 'email', 'normalizedEmail', 'course', 'semester', 'isExternal', 'isLeader', 'createdAt'])
+        && data.keys().hasOnly(['name', 'email', 'normalizedEmail', 'course', 'semester', 'isExternal', 'isLeader', 'createdAt'])
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 120
+        && data.email is string && data.email.size() >= 5 && data.email.size() <= 160
+        && data.normalizedEmail is string && isValidEmailKey(data.normalizedEmail)
+        && data.course is string && data.course.size() >= 2 && data.course.size() <= 120
+        && data.semester is string && data.semester.size() >= 1 && data.semester.size() <= 40
+        && data.isExternal is bool
+        && data.isLeader is bool
+        && data.createdAt is timestamp;
+    }
+
+    function isValidMemberLock(data) {
+      return data.keys().hasAll(['teamId', 'leaderUid', 'createdAt'])
+        && data.keys().hasOnly(['teamId', 'leaderUid', 'createdAt'])
+        && isValidId(data.teamId)
+        && isValidId(data.leaderUid)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidProject(data) {
+      return data.keys().hasAll([
+          'teamId', 'leaderUid', 'teamName', 'teamNumber', 'name',
+          'shortDescription', 'fullDescription', 'track', 'technologies',
+          'githubUrl', 'isRepoPublicDeclared', 'demoUrl', 'slidesPath',
+          'slidesName', 'slidesSize', 'screenshots', 'status', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'teamId', 'leaderUid', 'teamName', 'teamNumber', 'name',
+          'shortDescription', 'fullDescription', 'track', 'technologies',
+          'githubUrl', 'isRepoPublicDeclared', 'demoUrl', 'slidesUrl', 'slidesPath',
+          'slidesName', 'slidesSize', 'screenshots', 'status', 'submittedAt', 'updatedAt'
+        ])
+        && isValidId(data.teamId)
+        && isValidId(data.leaderUid)
+        && data.teamName is string && data.teamName.size() >= 2 && data.teamName.size() <= 80
+        && data.teamNumber is int && data.teamNumber >= 1 && data.teamNumber <= 1000
+        && data.name is string && data.name.size() <= 140
+        && data.shortDescription is string && data.shortDescription.size() <= 200
+        && data.fullDescription is string && data.fullDescription.size() <= 4000
+        && data.track is string && data.track.size() <= 100
+        && data.technologies is list && data.technologies.size() <= 12
+        && (data.technologies.size() == 0 || data.technologies[0] is string)
+        && data.githubUrl is string && data.githubUrl.size() <= 300
+        && data.isRepoPublicDeclared is bool
+        && data.demoUrl is string && data.demoUrl.size() <= 500
+        && (!('slidesUrl' in data) || (data.slidesUrl is string && data.slidesUrl.size() <= 500))
+        && data.slidesPath is string && data.slidesPath.size() <= 300
+        && data.slidesName is string && data.slidesName.size() <= 160
+        && data.slidesSize is int && data.slidesSize >= 0 && data.slidesSize <= 10485760
+        && data.screenshots is list && data.screenshots.size() <= 5
+        && data.status in ['rascunho', 'enviado', 'avaliado', 'encerrado']
+        && (!('submittedAt' in data) || data.submittedAt is timestamp)
+        && data.updatedAt is timestamp;
+    }
+
+    function isReadyForSubmission(data) {
+      return data.name.size() >= 2 && data.name.size() <= 140
+        && data.shortDescription.size() >= 10 && data.shortDescription.size() <= 200
+        && data.fullDescription.size() >= 20 && data.fullDescription.size() <= 4000
+        && data.track in [
+          'Inovação na Educação (EdTech)',
+          'Sustentabilidade e Meio Ambiente',
+          'Inteligência Artificial Aplicada',
+          'Acessibilidade e Inclusão Digital'
+        ]
+        && data.githubUrl.matches('^https://(github\\.com|gitlab\\.com)/[^\\s/]+/[^\\s/]+.*$')
+        && data.isRepoPublicDeclared == true
+        && (data.demoUrl.size() == 0 || data.demoUrl.matches('^https?://[^\\s/$.?#].[^\\s]*$'))
+        && (
+          ('slidesUrl' in data && data.slidesUrl.matches('^https?://[^\\s/$.?#].[^\\s]*$'))
+          || data.slidesPath.matches('^https?://[^\\s/$.?#].[^\\s]*$')
+        );
+    }
+
+    function isValidScoreMap(scores) {
+      return scores is map
+        && scores.keys().hasAll(['inovacao', 'tecnica', 'demo', 'impacto', 'pitch'])
+        && scores.keys().hasOnly(['inovacao', 'tecnica', 'demo', 'impacto', 'pitch'])
+        && scores.inovacao is int && scores.inovacao >= 0 && scores.inovacao <= 100
+        && scores.tecnica is int && scores.tecnica >= 0 && scores.tecnica <= 100
+        && scores.demo is int && scores.demo >= 0 && scores.demo <= 100
+        && scores.impacto is int && scores.impacto >= 0 && scores.impacto <= 100
+        && scores.pitch is int && scores.pitch >= 0 && scores.pitch <= 100;
+    }
+
+    function isValidEvaluation(data) {
+      return data.keys().hasAll(['projectId', 'jurorUid', 'jurorName', 'scores', 'comment', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['projectId', 'jurorUid', 'jurorName', 'scores', 'comment', 'createdAt', 'updatedAt'])
+        && isValidId(data.projectId)
+        && isValidId(data.jurorUid)
+        && data.jurorName is string && data.jurorName.size() >= 2 && data.jurorName.size() <= 120
+        && isValidScoreMap(data.scores)
+        && data.comment is string && data.comment.size() <= 2000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAverageCriteria(avg) {
+      return avg is map
+        && avg.keys().hasAll(['inovacao', 'tecnica', 'demo', 'impacto', 'pitch'])
+        && avg.keys().hasOnly(['inovacao', 'tecnica', 'demo', 'impacto', 'pitch'])
+        && avg.inovacao is number && avg.inovacao >= 0 && avg.inovacao <= 10
+        && avg.tecnica is number && avg.tecnica >= 0 && avg.tecnica <= 10
+        && avg.demo is number && avg.demo >= 0 && avg.demo <= 10
+        && avg.impacto is number && avg.impacto >= 0 && avg.impacto <= 10
+        && avg.pitch is number && avg.pitch >= 0 && avg.pitch <= 10;
+    }
+
+    function isValidResult(data) {
+      return data.keys().hasAll([
+          'projectId', 'teamName', 'teamNumber', 'projectName', 'track',
+          'averageCriteria', 'finalScore', 'evaluationCount', 'rank', 'comments', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'projectId', 'teamName', 'teamNumber', 'projectName', 'track',
+          'averageCriteria', 'finalScore', 'evaluationCount', 'rank', 'comments', 'updatedAt'
+        ])
+        && isValidId(data.projectId)
+        && data.teamName is string && data.teamName.size() <= 80
+        && data.teamNumber is int && data.teamNumber >= 1 && data.teamNumber <= 1000
+        && data.projectName is string && data.projectName.size() <= 140
+        && data.track is string && data.track.size() <= 100
+        && isValidAverageCriteria(data.averageCriteria)
+        && data.finalScore is number && data.finalScore >= 0 && data.finalScore <= 10
+        && data.evaluationCount is int && data.evaluationCount >= 1 && data.evaluationCount <= 100
+        && data.rank is int && data.rank >= 1 && data.rank <= 500
+        && data.comments is list && data.comments.size() <= 100
+        && (data.comments.size() == 0 || data.comments[0] is string)
+        && data.updatedAt is timestamp;
+    }
+
+    // --- COLLECTION RULES ---
+
+    // Public settings (landing + deadlines)
+    match /settings/{docId} {
+      allow get: if isValidId(docId);
+      allow list: if false;
+      allow create, update: if isValidId(docId) && docId == 'event' && isOrg() && isValidEventSettings(incoming()) && incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    // Public registration counter
+    match /stats/{docId} {
+      allow get: if isValidId(docId) && docId == 'public';
+      allow list: if false;
+      allow create: if isValidId(docId) && docId == 'public' && isOrg() && isValidPublicStats(incoming()) && incoming().updatedAt == request.time;
+      allow update: if isValidId(docId) && docId == 'public' && isValidPublicStats(incoming()) && incoming().updatedAt == request.time && (
+        isOrg() || (
+          isVerifiedParticipant()
+          && incoming().teamCount == existing().teamCount + 1
+          && !exists(/databases/$(database)/documents/teams/$(request.auth.uid))
+          && existsAfter(/databases/$(database)/documents/teams/$(request.auth.uid))
+        )
+      );
+      allow delete: if false;
+    }
+
+    // Public landing collections
+    match /criteria/{key} {
+      allow get: if isValidId(key);
+      allow list: if true;
+      allow create, update: if isValidId(key) && isOrg() && isValidCriterion(incoming(), key);
+      allow delete: if false;
+    }
+
+    match /scheduleItems/{id} {
+      allow get: if isValidId(id);
+      allow list: if true;
+      allow create, update: if isValidId(id) && isOrg() && isValidScheduleItem(incoming());
+      allow delete: if isValidId(id) && isOrg();
+    }
+
+    match /rules/{id} {
+      allow get: if isValidId(id);
+      allow list: if true;
+      allow create, update: if isValidId(id) && isOrg() && isValidRuleItem(incoming());
+      allow delete: if isValidId(id) && isOrg();
+    }
+
+    match /faqItems/{id} {
+      allow get: if isValidId(id);
+      allow list: if true;
+      allow create, update: if isValidId(id) && isOrg() && isValidFaqItem(incoming());
+      allow delete: if isValidId(id) && isOrg();
+    }
+
+    match /publicJurors/{id} {
+      allow get: if isValidId(id);
+      allow list: if true;
+      allow create, update: if isValidId(id) && isOrg() && isValidPublicJuror(incoming());
+      allow delete: if isValidId(id) && isOrg();
+    }
+
+    // User profiles (PII protected)
+    match /users/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isOrg());
+      allow list: if isOrg();
+      allow create: if isValidId(uid)
+        && isOwner(uid)
+        && isValidUserProfile(incoming())
+        && incoming().uid == uid
+        && incoming().email == request.auth.token.email
+        && !('teamId' in incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(uid)
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().email == existing().email
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isOrg() || (
+            isOwner(uid)
+            && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'pendingTeamName', 'teamId', 'updatedAt'])
+            && (!('teamId' in incoming()) || incoming().teamId == request.auth.uid)
+          )
+        );
+      allow delete: if isValidId(uid) && isOrg() && request.auth.uid != uid;
+    }
+
+    // RBAC roles
+    match /userRoles/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isOrg());
+      allow list: if isOrg();
+      allow create: if isValidId(uid)
+        && isValidUserRole(incoming())
+        && incoming().updatedAt == request.time
+        && (
+          isOrg() || (
+            isOwner(uid)
+            && isIfprEmail()
+            && incoming().role == 'participante'
+            && incoming().email == request.auth.token.email
+          )
+        );
+      allow update: if isValidId(uid)
+        && isOrg()
+        && isValidUserRole(incoming())
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(uid) && isOrg() && request.auth.uid != uid;
+    }
+
+    // Teams
+    match /teams/{teamId} {
+      allow get: if isValidId(teamId) && (isOrg() || isOwner(teamId) || isTeamLeader(teamId));
+      allow list: if isOrg() || (isSignedIn() && resource.data.leaderUid == request.auth.uid);
+      allow create: if isValidId(teamId)
+        && isVerifiedParticipant()
+        && teamId == request.auth.uid
+        && isValidTeam(incoming())
+        && incoming().leaderUid == request.auth.uid
+        && incoming().leaderEmail == request.auth.token.email
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/stats/public)
+        && exists(/databases/$(database)/documents/settings/event)
+        && get(/databases/$(database)/documents/stats/public).data.teamCount < eventData().maxTeams
+        && incoming().number == get(/databases/$(database)/documents/stats/public).data.teamCount + 1
+        && getAfter(/databases/$(database)/documents/stats/public).data.teamCount == get(/databases/$(database)/documents/stats/public).data.teamCount + 1
+        && existsAfter(/databases/$(database)/documents/projects/$(teamId))
+        && existsAfter(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid));
+      allow update: if isValidId(teamId)
+        && isValidTeam(incoming())
+        && incoming().leaderUid == existing().leaderUid
+        && incoming().leaderEmail == existing().leaderEmail
+        && incoming().number == existing().number
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isOrg() || (
+            isVerifiedParticipant()
+            && isTeamLeader(teamId)
+            && isProjectDraft(teamId)
+            && beforeDeadline()
+            && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'leaderName', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(teamId) && isOrg();
+
+      // Team Members Subcollection (Master Gate via parent team)
+      match /members/{memberId} {
+        allow get: if isValidId(teamId) && isValidId(memberId) && (isOrg() || isTeamLeader(teamId));
+        allow list: if isValidId(teamId) && (isOrg() || isTeamLeader(teamId));
+        allow create: if isValidId(teamId) && isValidId(memberId)
+          && isValidTeamMember(incoming())
+          && incoming().createdAt == request.time
+          && (
+            isOrg() || (
+              isVerifiedParticipant()
+              && (
+                (memberId == request.auth.uid && teamId == request.auth.uid && existsAfter(/databases/$(database)/documents/teams/$(teamId)))
+                || (isTeamLeader(teamId) && isProjectDraft(teamId) && beforeDeadline())
+              )
+              && existsAfter(/databases/$(database)/documents/memberLocks/$(incoming().normalizedEmail))
+            )
+          );
+        allow update: if isValidId(teamId) && isValidId(memberId)
+          && isValidTeamMember(incoming())
+          && incoming().createdAt == existing().createdAt
+          && incoming().normalizedEmail == existing().normalizedEmail
+          && incoming().isLeader == existing().isLeader
+          && (
+            isOrg() || (
+              isVerifiedParticipant()
+              && isTeamLeader(teamId)
+              && isProjectDraft(teamId)
+              && beforeDeadline()
+              && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'course', 'semester', 'isExternal'])
+            )
+          );
+        allow delete: if isValidId(teamId) && isValidId(memberId) && (
+          isOrg() || (
+            isVerifiedParticipant()
+            && isTeamLeader(teamId)
+            && isProjectDraft(teamId)
+            && beforeDeadline()
+            && existing().isLeader == false
+          )
+        );
+      }
+    }
+
+    // Member uniqueness locks
+    match /memberLocks/{emailKey} {
+      allow get: if isValidEmailKey(emailKey) && (isOrg() || isVerifiedParticipant());
+      allow list: if isOrg();
+      allow create: if isValidEmailKey(emailKey)
+        && isValidMemberLock(incoming())
+        && incoming().createdAt == request.time
+        && !exists(/databases/$(database)/documents/memberLocks/$(emailKey))
+        && (
+          isOrg() || (
+            isVerifiedParticipant()
+            && incoming().leaderUid == request.auth.uid
+            && (
+              (incoming().teamId == request.auth.uid && existsAfter(/databases/$(database)/documents/teams/$(incoming().teamId)))
+              || (isTeamLeader(incoming().teamId) && isProjectDraft(incoming().teamId) && beforeDeadline())
+            )
+          )
+        );
+      allow update: if false;
+      allow delete: if isValidEmailKey(emailKey) && (
+        isOrg() || (
+          isVerifiedParticipant()
+          && existing().leaderUid == request.auth.uid
+          && isProjectDraft(existing().teamId)
+          && beforeDeadline()
+        )
+      );
+    }
+
+    // Projects (1 per team, same teamId)
+    match /projects/{teamId} {
+      allow get: if isValidId(teamId) && (
+        isOrg()
+        || isOwner(teamId)
+        || isTeamLeader(teamId)
+        || (isJuror() && resource != null && existing().status == 'enviado')
+      );
+      allow list: if isOrg()
+        || (isSignedIn() && resource.data.leaderUid == request.auth.uid)
+        || (isJuror() && resource.data.status == 'enviado');
+      allow create: if isValidId(teamId)
+        && isVerifiedParticipant()
+        && teamId == request.auth.uid
+        && isValidProject(incoming())
+        && incoming().teamId == teamId
+        && incoming().leaderUid == request.auth.uid
+        && incoming().status == 'rascunho'
+        && !('submittedAt' in incoming())
+        && incoming().updatedAt == request.time
+        && existsAfter(/databases/$(database)/documents/teams/$(teamId));
+      allow update: if isValidId(teamId)
+        && isValidProject(incoming())
+        && incoming().teamId == existing().teamId
+        && incoming().leaderUid == existing().leaderUid
+        && incoming().teamNumber == existing().teamNumber
+        && incoming().updatedAt == request.time
+        && (
+          isOrg() || (
+            isVerifiedParticipant()
+            && isTeamLeader(teamId)
+            && existing().status == 'rascunho'
+            && beforeDeadline()
+            && (
+              (
+                incoming().status == 'rascunho'
+                && !('submittedAt' in incoming())
+                && incoming().diff(existing()).affectedKeys().hasOnly([
+                  'name', 'shortDescription', 'fullDescription', 'track',
+                  'technologies', 'githubUrl', 'isRepoPublicDeclared', 'demoUrl',
+                  'slidesUrl', 'slidesPath', 'slidesName', 'slidesSize', 'screenshots', 'updatedAt'
+                ])
+              )
+              || (
+                incoming().status == 'enviado'
+                && incoming().submittedAt == request.time
+                && isReadyForSubmission(incoming())
+                && incoming().diff(existing()).affectedKeys().hasOnly([
+                  'name', 'shortDescription', 'fullDescription', 'track',
+                  'technologies', 'githubUrl', 'isRepoPublicDeclared', 'demoUrl',
+                  'slidesUrl', 'slidesPath', 'slidesName', 'slidesSize', 'screenshots',
+                  'status', 'submittedAt', 'updatedAt'
+                ])
+              )
+            )
+          )
+        );
+      allow delete: if isValidId(teamId) && isOrg();
+    }
+
+    // Juror Evaluations
+    match /evaluations/{evalId} {
+      allow get: if isValidId(evalId) && (
+        isOrg() || (isJuror() && resource != null && existing().jurorUid == request.auth.uid)
+      );
+      allow list: if isOrg() || (isJuror() && resource.data.jurorUid == request.auth.uid);
+      allow create: if isValidId(evalId)
+        && isJuror()
+        && isValidEvaluation(incoming())
+        && incoming().jurorUid == request.auth.uid
+        && evalId == (incoming().projectId + '_' + request.auth.uid)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isEvaluationOpen()
+        && isProjectSubmitted(incoming().projectId);
+      allow update: if isValidId(evalId)
+        && isJuror()
+        && isValidEvaluation(incoming())
+        && existing().jurorUid == request.auth.uid
+        && incoming().jurorUid == existing().jurorUid
+        && incoming().projectId == existing().projectId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && isEvaluationOpen()
+        && isProjectSubmitted(existing().projectId)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['scores', 'comment', 'jurorName', 'updatedAt']);
+      allow delete: if isValidId(evalId) && isOrg();
+    }
+
+    // Consolidated Results (written only by Organization on Spark plan; blocked for participants & jurors)
+    match /results/{projectId} {
+      allow get: if isValidId(projectId) && (
+        isOrg() || (
+          isVerifiedParticipant()
+          && isTeamLeader(projectId)
+          && areGradesReleased()
+          && isProjectEvaluated(projectId)
+        )
+      );
+      allow list: if isOrg();
+      allow create, update: if isValidId(projectId)
+        && isOrg()
+        && isValidResult(incoming())
+        && incoming().projectId == projectId
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(projectId) && isOrg();
+    }
+  }
+}

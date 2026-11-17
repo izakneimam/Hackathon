@@ -1,0 +1,44 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Default database or named database helper:
+    // Note: in Storage rules with named Firestore database, firestore.get references (default) unless configured.
+    // Standard check verifies team ownership via path uid == teamId or custom claims / metadata.
+    function isTeamLeaderOwner(teamId) {
+      return isEmailVerified() && request.auth.uid == teamId;
+    }
+
+    // Slides PDF: projects/{teamId}/slides.pdf
+    match /projects/{teamId}/slides.pdf {
+      allow read: if isSignedIn();
+      allow write: if isTeamLeaderOwner(teamId)
+        && request.resource != null
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType == 'application/pdf';
+      allow delete: if isTeamLeaderOwner(teamId);
+    }
+
+    // Screenshots: projects/{teamId}/screenshots/{fileName}
+    match /projects/{teamId}/screenshots/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isTeamLeaderOwner(teamId)
+        && request.resource != null
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(png|jpeg|jpg|webp)');
+      allow delete: if isTeamLeaderOwner(teamId);
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

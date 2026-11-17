@@ -1,0 +1,306 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Perfil do usuário autenticado na plataforma do hackathon.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "email": { "type": "string", "format": "email", "maxLength": 160 },
+        "pendingTeamName": { "type": "string", "maxLength": 80 },
+        "teamId": { "type": "string", "maxLength": 128 },
+        "lgpdAccepted": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "lgpdAccepted", "createdAt"]
+    },
+    "UserRole": {
+      "title": "UserRole",
+      "description": "Papel de acesso (RBAC) do usuário.",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["participante", "jurado", "organizacao"] },
+        "email": { "type": "string", "format": "email", "maxLength": 160 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["role", "email", "updatedAt"]
+    },
+    "EventSettings": {
+      "title": "EventSettings",
+      "description": "Configurações gerais do evento e conteúdo da landing page.",
+      "type": "object",
+      "properties": {
+        "eventTitle": { "type": "string", "maxLength": 150 },
+        "eventSubtitle": { "type": "string", "maxLength": 150 },
+        "campusLabel": { "type": "string", "maxLength": 120 },
+        "heroBadge": { "type": "string", "maxLength": 120 },
+        "heroTag": { "type": "string", "maxLength": 80 },
+        "heroTitleLine1": { "type": "string", "maxLength": 80 },
+        "heroTitleHighlight": { "type": "string", "maxLength": 80 },
+        "heroDescription": { "type": "string", "maxLength": 500 },
+        "loginShowcaseHeadline": { "type": "string", "maxLength": 200 },
+        "loginShowcaseDescription": { "type": "string", "maxLength": 400 },
+        "loginDurationLabel": { "type": "string", "maxLength": 30 },
+        "loginTeamsRangeLabel": { "type": "string", "maxLength": 30 },
+        "startsAt": { "type": "string", "format": "date-time" },
+        "submissionDeadline": { "type": "string", "format": "date-time" },
+        "maxTeams": { "type": "integer" },
+        "teamMinMembers": { "type": "integer" },
+        "teamMaxMembers": { "type": "integer" },
+        "maxExternalMembers": { "type": "integer" },
+        "evaluationOpen": { "type": "boolean" },
+        "gradesReleased": { "type": "boolean" },
+        "stats": { "type": "array" },
+        "steps": { "type": "array" },
+        "partners": { "type": "array" },
+        "contactEmail": { "type": "string", "maxLength": 160 },
+        "contactLocation": { "type": "string", "maxLength": 160 },
+        "ctaTitle": { "type": "string", "maxLength": 160 },
+        "ctaDescription": { "type": "string", "maxLength": 300 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["eventTitle", "startsAt", "submissionDeadline", "maxTeams", "evaluationOpen", "gradesReleased"]
+    },
+    "PublicStats": {
+      "title": "PublicStats",
+      "description": "Contador público de equipes inscritas.",
+      "type": "object",
+      "properties": {
+        "teamCount": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["teamCount"]
+    },
+    "Criterion": {
+      "title": "Criterion",
+      "description": "Critério de avaliação com peso percentual.",
+      "type": "object",
+      "properties": {
+        "key": { "type": "string", "enum": ["inovacao", "tecnica", "demo", "impacto", "pitch"] },
+        "name": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 400 },
+        "weight": { "type": "integer" },
+        "color": { "type": "string", "maxLength": 30 },
+        "order": { "type": "integer" }
+      },
+      "required": ["key", "name", "description", "weight", "order"]
+    },
+    "ScheduleItem": {
+      "title": "ScheduleItem",
+      "description": "Item do cronograma exibido na landing page.",
+      "type": "object",
+      "properties": {
+        "timeLabel": { "type": "string", "maxLength": 50 },
+        "title": { "type": "string", "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 400 },
+        "accent": { "type": "string", "maxLength": 30 },
+        "order": { "type": "integer" }
+      },
+      "required": ["timeLabel", "title", "description", "order"]
+    },
+    "RuleItem": {
+      "title": "RuleItem",
+      "description": "Item do regulamento exibido na landing page.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 160 },
+        "content": { "type": "string", "maxLength": 1500 },
+        "order": { "type": "integer" }
+      },
+      "required": ["title", "content", "order"]
+    },
+    "FaqItem": {
+      "title": "FaqItem",
+      "description": "Pergunta frequente exibida na landing page.",
+      "type": "object",
+      "properties": {
+        "question": { "type": "string", "maxLength": 200 },
+        "answer": { "type": "string", "maxLength": 1500 },
+        "order": { "type": "integer" }
+      },
+      "required": ["question", "answer", "order"]
+    },
+    "PublicJuror": {
+      "title": "PublicJuror",
+      "description": "Jurado confirmado exibido na landing page.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 120 },
+        "initials": { "type": "string", "maxLength": 4 },
+        "role": { "type": "string", "maxLength": 120 },
+        "institution": { "type": "string", "maxLength": 120 },
+        "colorTheme": { "type": "string", "maxLength": 30 },
+        "order": { "type": "integer" }
+      },
+      "required": ["name", "initials", "role", "institution", "order"]
+    },
+    "Team": {
+      "title": "Team",
+      "description": "Equipe participante do hackathon.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "number": { "type": "integer" },
+        "leaderUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "leaderName": { "type": "string", "maxLength": 120 },
+        "leaderEmail": { "type": "string", "format": "email", "maxLength": 160 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "number", "leaderUid", "leaderName", "leaderEmail", "createdAt", "updatedAt"]
+    },
+    "TeamMember": {
+      "title": "TeamMember",
+      "description": "Integrante de uma equipe.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "email": { "type": "string", "format": "email", "maxLength": 160 },
+        "normalizedEmail": { "type": "string", "maxLength": 160 },
+        "course": { "type": "string", "maxLength": 120 },
+        "semester": { "type": "string", "maxLength": 40 },
+        "isExternal": { "type": "boolean" },
+        "isLeader": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "normalizedEmail", "course", "semester", "isExternal", "isLeader", "createdAt"]
+    },
+    "MemberLock": {
+      "title": "MemberLock",
+      "description": "Trava de unicidade de integrante por e-mail normalizado.",
+      "type": "object",
+      "properties": {
+        "teamId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "leaderUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["teamId", "leaderUid", "createdAt"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Projeto submetido por uma equipe.",
+      "type": "object",
+      "properties": {
+        "teamId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "leaderUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "teamName": { "type": "string", "maxLength": 80 },
+        "teamNumber": { "type": "integer" },
+        "name": { "type": "string", "maxLength": 140 },
+        "shortDescription": { "type": "string", "maxLength": 200 },
+        "fullDescription": { "type": "string", "maxLength": 4000 },
+        "track": { "type": "string", "maxLength": 100 },
+        "technologies": { "type": "array" },
+        "githubUrl": { "type": "string", "maxLength": 300 },
+        "isRepoPublicDeclared": { "type": "boolean" },
+        "demoUrl": { "type": "string", "maxLength": 500 },
+        "slidesUrl": { "type": "string", "maxLength": 500 },
+        "slidesPath": { "type": "string", "maxLength": 300 },
+        "slidesName": { "type": "string", "maxLength": 160 },
+        "slidesSize": { "type": "integer" },
+        "screenshots": { "type": "array" },
+        "status": { "type": "string", "enum": ["rascunho", "enviado", "avaliado", "encerrado"] },
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["teamId", "leaderUid", "teamName", "teamNumber", "status", "updatedAt"]
+    },
+    "Evaluation": {
+      "title": "Evaluation",
+      "description": "Avaliação de um jurado para um projeto (notas em décimos inteiros 0..100).",
+      "type": "object",
+      "properties": {
+        "projectId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "jurorUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "jurorName": { "type": "string", "maxLength": 120 },
+        "scores": { "type": "object" },
+        "comment": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["projectId", "jurorUid", "scores", "comment", "updatedAt"]
+    },
+    "Result": {
+      "title": "Result",
+      "description": "Resultado consolidado de um projeto calculado no servidor.",
+      "type": "object",
+      "properties": {
+        "projectId": { "type": "string", "maxLength": 128 },
+        "teamName": { "type": "string", "maxLength": 80 },
+        "teamNumber": { "type": "integer" },
+        "projectName": { "type": "string", "maxLength": 140 },
+        "track": { "type": "string", "maxLength": 100 },
+        "averageCriteria": { "type": "object" },
+        "finalScore": { "type": "number" },
+        "evaluationCount": { "type": "integer" },
+        "rank": { "type": "integer" },
+        "comments": { "type": "array" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["projectId", "finalScore", "evaluationCount", "rank"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Dados cadastrais privados do usuário."
+    },
+    "/userRoles/{uid}": {
+      "schema": { "$ref": "#/entities/UserRole" },
+      "description": "Papéis de acesso RBAC (participante, jurado, organizacao)."
+    },
+    "/settings/{docId}": {
+      "schema": { "$ref": "#/entities/EventSettings" },
+      "description": "Configurações gerais do evento e conteúdo da landing."
+    },
+    "/stats/{docId}": {
+      "schema": { "$ref": "#/entities/PublicStats" },
+      "description": "Contadores públicos de inscrição."
+    },
+    "/criteria/{key}": {
+      "schema": { "$ref": "#/entities/Criterion" },
+      "description": "Os 5 critérios de avaliação e seus pesos."
+    },
+    "/scheduleItems/{id}": {
+      "schema": { "$ref": "#/entities/ScheduleItem" },
+      "description": "Itens da linha do tempo do evento."
+    },
+    "/rules/{id}": {
+      "schema": { "$ref": "#/entities/RuleItem" },
+      "description": "Itens do regulamento na landing page."
+    },
+    "/faqItems/{id}": {
+      "schema": { "$ref": "#/entities/FaqItem" },
+      "description": "Perguntas frequentes na landing page."
+    },
+    "/publicJurors/{id}": {
+      "schema": { "$ref": "#/entities/PublicJuror" },
+      "description": "Jurados exibidos publicamente na landing page."
+    },
+    "/teams/{teamId}": {
+      "schema": { "$ref": "#/entities/Team" },
+      "description": "Equipes inscritas no hackathon."
+    },
+    "/teams/{teamId}/members/{memberId}": {
+      "schema": { "$ref": "#/entities/TeamMember" },
+      "description": "Integrantes de cada equipe (3 a 5)."
+    },
+    "/memberLocks/{email}": {
+      "schema": { "$ref": "#/entities/MemberLock" },
+      "description": "Trava para garantir que cada aluno pertença a no máximo uma equipe."
+    },
+    "/projects/{teamId}": {
+      "schema": { "$ref": "#/entities/Project" },
+      "description": "Projetos das equipes (1 por equipe, mesmo ID)."
+    },
+    "/evaluations/{evalId}": {
+      "schema": { "$ref": "#/entities/Evaluation" },
+      "description": "Avaliações dos jurados (ID = {projectId}_{jurorUid})."
+    },
+    "/results/{projectId}": {
+      "schema": { "$ref": "#/entities/Result" },
+      "description": "Resultados e ranking calculados exclusivamente por Cloud Functions."
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "1º Hackathon de Ciência da Computação – IFPR",
+  "description": "Plataforma oficial do 1º Hackathon de Ciência da Computação do IFPR para inscrição de equipes, envio de projetos e avaliação por banca de jurados.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
